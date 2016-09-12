@@ -30,53 +30,55 @@ pub enum ColumnPosition {
 }
 
 /// Contains the character used for printing a line separator
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct LineSeparator {
 	/// Line separator
-	line: char,
+	line: String,
 	/// Internal junction separator
-	junc: char,
+	junc: String,
 	/// Left junction separator
-	ljunc: char,
+	ljunc: String,
 	/// Right junction separator
-	rjunc: char
+	rjunc: String
 }
 
 impl LineSeparator {
 
-	/// Create a new line separator instance where `line` is the character used to separate 2 lines
-	/// and `junc` is the one used for junctions between columns and lines
-	pub fn new(line: char, junc: char, ljunc: char, rjunc: char) -> LineSeparator {
-		LineSeparator{line: line, junc: junc, ljunc: ljunc, rjunc: rjunc}
-	}
+    /// Create a new line separator instance where `line` is the character used to separate 2 lines
+    /// and `junc` is the one used for junctions between columns and lines
+    pub fn new(line: &str, junc: &str, ljunc: &str, rjunc: &str) -> LineSeparator {
+        LineSeparator{line: line.to_owned(), junc: junc.to_owned(), ljunc: ljunc.to_owned(), rjunc: rjunc.to_owned()}
+    }
 
-	/// Print a full line separator to `out`. `col_width` is a slice containing the width of each column
-	pub fn print<T: Write+?Sized>(&self, out: &mut T, col_width: &[usize], colsep: bool, lborder: bool, rborder: bool) -> Result<(), Error> {
-		if lborder {
-			try!(out.write_all(&[self.ljunc as u8]));
-		}
-		let mut iter = col_width.into_iter().peekable();
-		while let Some(width) = iter.next() {
-			try!(out.write_all(&vec![self.line as u8; width+2]));
-			if colsep && iter.peek().is_some() {
-				try!(out.write_all(&[self.junc as u8]));
-			}
-		}
-		if rborder {
-			try!(out.write_all(&[self.rjunc as u8]));
-		}
-		out.write_all(NEWLINE)
-	}
+    /// Print a full line separator to `out`. `col_width` is a slice containing the width of each column
+    pub fn print<T: Write+?Sized>(&self, out: &mut T, col_width: &[usize], colsep: bool, lborder: bool, rborder: bool) -> Result<(), Error> {
+        if lborder {
+            try!(out.write_all(self.ljunc.as_bytes()));
+        }
+        let mut iter = col_width.into_iter().peekable();
+        while let Some(width) = iter.next() {
+            for _ in 0..*width+2{
+                try!(out.write_all(self.line.as_bytes()));
+            }
+            if colsep && iter.peek().is_some() {
+                try!(out.write_all(self.junc.as_bytes()));
+            }
+        }
+        if rborder {
+            try!(out.write_all(self.rjunc.as_bytes()));
+        }
+        out.write_all(NEWLINE)
+    }
 }
 
 impl Default for LineSeparator {
 	fn default() -> Self {
-		LineSeparator::new('-', '+', '+', '+')
+		LineSeparator::new("-", "+", "+", "+")
 	}
 }
 
 /// Contains the table formatting rules
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct TableFormat {
 	/// Optional column separator character
 	csep: Option<char>,
@@ -138,17 +140,17 @@ impl TableFormat {
 	}
 
 	/// Set a line separator
-	pub fn separator(&mut self, what: LinePosition, separator: LineSeparator) {
+	pub fn separator(&mut self, what: LinePosition, separator: &LineSeparator) {
 		*match what {
 			LinePosition::Top => &mut self.top_sep,
 			LinePosition::Bottom => &mut self.bottom_sep,
 			LinePosition::Title => &mut self.tsep,
 			LinePosition::Intern => &mut self.lsep
-		} = Some(separator);
+		} = Some(separator.clone());
 	}
 
 	/// Set format for multiple kind of line separator
-	pub fn separators(&mut self, what: &[LinePosition], separator: LineSeparator) {
+	pub fn separators(&mut self, what: &[LinePosition], separator: &LineSeparator) {
 		for pos in what {
 			self.separator(*pos, separator);
 		}
@@ -185,7 +187,7 @@ impl TableFormat {
 	/// Print a column separator or a table border
 	pub fn print_column_separator<T: Write+?Sized>(&self, out: &mut T, pos: ColumnPosition) -> Result<(), Error> {
 		match self.get_column_separator(pos) {
-			Some(s) => out.write_all(&[s as u8]),
+			Some(s) => out.write_all(s.encode_utf8().as_slice()),
 			None => Ok(())
 		}
 	}
@@ -228,13 +230,13 @@ impl FormatBuilder {
 	}
 
 	/// Set a line separator format
-	pub fn separator(mut self, what: LinePosition, separator: LineSeparator) -> Self {
+	pub fn separator(mut self, what: LinePosition, separator: &LineSeparator) -> Self {
 		self.format.separator(what, separator);
 		self
 	}
 
 	/// Set separator format for multiple kind of line separators
-	pub fn separators(mut self, what: &[LinePosition], separator: LineSeparator) -> Self {
+	pub fn separators(mut self, what: &[LinePosition], separator: &LineSeparator) -> Self {
 		self.format.separators(what, separator);
 		self
 	}
@@ -252,9 +254,9 @@ pub mod consts {
 
 	lazy_static! {
 		/// A line separator made of `-` and `+`
-		static ref MINUS_PLUS_SEP: LineSeparator = LineSeparator::new('-', '+', '+', '+');
+		static ref MINUS_PLUS_SEP: LineSeparator = LineSeparator::new("-", "+", "+", "+");
 		/// A line separator made of `=` and `+`
-		static ref EQU_PLUS_SEP: LineSeparator = LineSeparator::new('=', '+', '+', '+');
+		static ref EQU_PLUS_SEP: LineSeparator = LineSeparator::new("=", "+", "+", "+");
 
 		/// Default table format
 		///
@@ -271,10 +273,10 @@ pub mod consts {
 		pub static ref FORMAT_DEFAULT: TableFormat = FormatBuilder::new()
 																	.column_separator('|')
 																	.borders('|')
-																	.separator(LinePosition::Intern, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Title, *EQU_PLUS_SEP)
-																	.separator(LinePosition::Bottom, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Top, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Intern, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &EQU_PLUS_SEP)
+																	.separator(LinePosition::Bottom, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Top, &MINUS_PLUS_SEP)
 																	.padding(1, 1)
 																	.build();
 
@@ -293,10 +295,10 @@ pub mod consts {
 		pub static ref FORMAT_NO_TITLE: TableFormat = FormatBuilder::new()
 																	.column_separator('|')
 																	.borders('|')
-																	.separator(LinePosition::Intern, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Title, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Bottom, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Top, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Intern, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Bottom, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Top, &MINUS_PLUS_SEP)
 																	.padding(1, 1)
 																	.build();
 
@@ -314,9 +316,9 @@ pub mod consts {
 		pub static ref FORMAT_NO_LINESEP_WITH_TITLE: TableFormat = FormatBuilder::new()
 																	.column_separator('|')
 																	.borders('|')
-																	.separator(LinePosition::Title, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Bottom, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Top, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Bottom, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Top, &MINUS_PLUS_SEP)
 																	.padding(1, 1)
 																	.build();
 
@@ -349,10 +351,10 @@ pub mod consts {
 		/// --------
 		/// ```
 		pub static ref FORMAT_NO_COLSEP: TableFormat = FormatBuilder::new()
-																	.separator(LinePosition::Intern, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Title, *EQU_PLUS_SEP)
-																	.separator(LinePosition::Bottom, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Top, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Intern, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &EQU_PLUS_SEP)
+																	.separator(LinePosition::Bottom, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Top, &MINUS_PLUS_SEP)
 																	.padding(1, 1)
 																	.build();
 
@@ -381,10 +383,10 @@ pub mod consts {
 		/// ```
 		pub static ref FORMAT_BORDERS_ONLY: TableFormat = FormatBuilder::new()
 																	.padding(1, 1)
-																	.separator(LinePosition::Intern, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Title, *EQU_PLUS_SEP)
-																	.separator(LinePosition::Bottom, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Top, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Intern, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &EQU_PLUS_SEP)
+																	.separator(LinePosition::Bottom, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Top, &MINUS_PLUS_SEP)
 																	.borders('|')
 																	.build();
 
@@ -400,8 +402,8 @@ pub mod consts {
 		/// ```
 		pub static ref FORMAT_NO_BORDER: TableFormat = FormatBuilder::new()
 																	.padding(1, 1)
-																	.separator(LinePosition::Intern, *MINUS_PLUS_SEP)
-																	.separator(LinePosition::Title, *EQU_PLUS_SEP)
+																	.separator(LinePosition::Intern, &MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &EQU_PLUS_SEP)
 																	.column_separator('|')
 																	.build();
 
@@ -416,7 +418,7 @@ pub mod consts {
 		/// ```
 		pub static ref FORMAT_NO_BORDER_LINE_SEPARATOR: TableFormat = FormatBuilder::new()
 																	.padding(1, 1)
-																	.separator(LinePosition::Title, *MINUS_PLUS_SEP)
+																	.separator(LinePosition::Title, &MINUS_PLUS_SEP)
 																	.column_separator('|')
 																	.build();
 	}
